@@ -12,4 +12,4 @@ services:
       unzip chrome-linux64.zip
       # Add Chrome path to environment so Selenium detects it natively
       export PATH=$PATH:/home/render/.chrome/chrome-linux64
-    startCommand: gunicorn app:app
+    startCommand: python3 app.py
