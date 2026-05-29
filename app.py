@@ -1,5 +1,7 @@
 import time
+import os
 from flask import Flask, jsonify, request
+from flask_cors import CORS  # <-- Added for CORS
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -7,18 +9,25 @@ from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 
 app = Flask(__name__)
+CORS(app)  # <-- This enables CORS for all routes, fixing the origin block
 
 def scrape_gepco_bill(reference_number):
-    # CRITICAL FOR RENDER: Run Chrome in headless mode on Linux
     options = webdriver.ChromeOptions()
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     
-    # Render manages the driver path automatically if installed via build pack or docker,
-    # or it will find it in the standard system path.
-    driver = webdriver.Chrome(options=options)
+    # FIX FOR 502 ERROR: Point Selenium directly to where your render.yaml installs Chrome
+    chrome_bin_path = "/home/render/.chrome/chrome-linux64/chrome"
+    if os.path.exists(chrome_bin_path):
+        options.binary_location = chrome_bin_path
+    
+    try:
+        # Standard Selenium startup
+        driver = webdriver.Chrome(options=options)
+    except Exception as init_err:
+        return {"status": "error", "message": f"WebDriver failed to initialize: {str(init_err)}"}
     
     try:
         url = "https://bill.pitc.com.pk/gepcobill"
@@ -85,7 +94,6 @@ def scrape_gepco_bill(reference_number):
                         "payment_status": tds[3] if len(tds) > 3 else "N/A"
                     })
 
-        # Return structured data as dictionary
         return {
             "status": "success",
             "data": {
@@ -106,9 +114,11 @@ def scrape_gepco_bill(reference_number):
         return {"status": "error", "message": str(e)}
         
     finally:
-        driver.quit()
+        try:
+            driver.quit()
+        except:
+            pass
 
-# API Endpoint definition
 @app.route('/get-bill/<string:ref_num>', methods=['GET'])
 def get_bill(ref_num):
     if len(ref_num) != 14:
@@ -120,5 +130,4 @@ def get_bill(ref_num):
     return jsonify(result), 200
 
 if __name__ == '__main__':
-    # Render binds to environment variable ports dynamically
     app.run(host='0.0.0.0', port=10000)
