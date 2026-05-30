@@ -1,6 +1,8 @@
 services:
   - type: web
     name: gepco-bill-api
-    env: docker
+    env: image
+    image:
+      url: docker.io/talhakhalid2122/gepco-bill-api:latest
     region: oregon
     plan: free
