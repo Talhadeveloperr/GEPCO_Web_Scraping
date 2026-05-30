@@ -1,7 +1,7 @@
 import time
 import os
 from flask import Flask, jsonify, request
-from flask_cors import CORS  # <-- Added for CORS
+from flask_cors import CORS
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -9,7 +9,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 
 app = Flask(__name__)
-CORS(app)  # <-- This enables CORS for all routes, fixing the origin block
+
+# Strictly configures CORS to bypass all origin limitations globally
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 def scrape_gepco_bill(reference_number):
     options = webdriver.ChromeOptions()
@@ -17,14 +19,13 @@ def scrape_gepco_bill(reference_number):
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
     
-    # FIX FOR 502 ERROR: Point Selenium directly to where your render.yaml installs Chrome
     chrome_bin_path = "/home/render/.chrome/chrome-linux64/chrome"
     if os.path.exists(chrome_bin_path):
         options.binary_location = chrome_bin_path
     
     try:
-        # Standard Selenium startup
         driver = webdriver.Chrome(options=options)
     except Exception as init_err:
         return {"status": "error", "message": f"WebDriver failed to initialize: {str(init_err)}"}
@@ -33,7 +34,7 @@ def scrape_gepco_bill(reference_number):
         url = "https://bill.pitc.com.pk/gepcobill"
         driver.get(url)
         
-        wait = WebDriverWait(driver, 10)
+        wait = WebDriverWait(driver, 15)
         search_box = wait.until(EC.visibility_of_element_located((By.ID, "searchTextBox")))
         
         search_box.clear()
@@ -42,7 +43,7 @@ def scrape_gepco_bill(reference_number):
         search_button = wait.until(EC.element_to_be_clickable((By.ID, "btnSearch")))
         search_button.click()
         
-        time.sleep(3) 
+        time.sleep(4) 
         if len(driver.window_handles) > 1:
             driver.switch_to.window(driver.window_handles[-1])
         
@@ -118,6 +119,11 @@ def scrape_gepco_bill(reference_number):
             driver.quit()
         except:
             pass
+
+# CRITICAL: Root route addition to return 200 OK for Render's Load Balancer
+@app.route('/', methods=['GET', 'HEAD'])
+def health_check():
+    return jsonify({"status": "healthy", "service": "gepco-scraper"}), 200
 
 @app.route('/get-bill/<string:ref_num>', methods=['GET'])
 def get_bill(ref_num):
