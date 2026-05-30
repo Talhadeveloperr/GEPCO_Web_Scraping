@@ -32,8 +32,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 10000
+# REMOVED EXPOSE 10000 (Railway dynamically assigns and injects $PORT)
 
-# Run using gunicorn bound to Render's required port
-# Force 1 lightweight process worker with a single thread and long lifecycle timeouts
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--workers", "1", "--threads", "1", "--timeout", "180", "app:app"]
+# CMD updated to capture Railway's dynamic PORT variable environment injection
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 180 app:app"]
