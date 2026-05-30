@@ -1,6 +1,5 @@
 import time
-import os
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from flask_cors import CORS
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -9,8 +8,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 
 app = Flask(__name__)
-
-# Strictly configures CORS to bypass all origin limitations globally
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 def scrape_gepco_bill(reference_number):
@@ -20,12 +17,10 @@ def scrape_gepco_bill(reference_number):
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
-    
-    chrome_bin_path = "/home/render/.chrome/chrome-linux64/chrome"
-    if os.path.exists(chrome_bin_path):
-        options.binary_location = chrome_bin_path
-    
+    options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+
     try:
+        # Docker automatically maps the chrome binary system path
         driver = webdriver.Chrome(options=options)
     except Exception as init_err:
         return {"status": "error", "message": f"WebDriver failed to initialize: {str(init_err)}"}
@@ -34,7 +29,7 @@ def scrape_gepco_bill(reference_number):
         url = "https://bill.pitc.com.pk/gepcobill"
         driver.get(url)
         
-        wait = WebDriverWait(driver, 15)
+        wait = WebDriverWait(driver, 20)
         search_box = wait.until(EC.visibility_of_element_located((By.ID, "searchTextBox")))
         
         search_box.clear()
@@ -49,7 +44,7 @@ def scrape_gepco_bill(reference_number):
         
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         
-        # 1. Extract Consumer & Billing Information
+        # Data Parsing Structure
         consumer_id = soup.find(text=lambda t: t and "CONSUMER ID" in t).find_next('tr').find_all('td')[0].text.strip() if soup.find(text=lambda t: t and "CONSUMER ID" in t) else "N/A"
         tariff = soup.find(text=lambda t: t and "TARIFF" in t).find_next('tr').find_all('td')[1].text.strip() if soup.find(text=lambda t: t and "TARIFF" in t) else "N/A"
         
@@ -60,7 +55,6 @@ def scrape_gepco_bill(reference_number):
             if len(ref_rows) > 1:
                 reference_no = ref_rows[1].find('td').text.strip()
 
-        # 2. Extract Name & Address
         name_address_block = soup.find('p', style=lambda s: s and 'text-align: left' in s)
         address_lines = []
         if name_address_block:
@@ -69,7 +63,6 @@ def scrape_gepco_bill(reference_number):
         consumer_name = address_lines[1] if len(address_lines) > 1 else "N/A"
         consumer_address = ", ".join(address_lines[2:]) if len(address_lines) > 2 else "N/A"
 
-        # 3. Extract Meter Readings
         meter_row = soup.find(text=lambda t: t and "METER NO" in t).find_all_next('tr', class_='content')[0] if soup.find(text=lambda t: t and "METER NO" in t) else None
         if meter_row:
             meter_tds = [td.text.strip().replace('\n', ' ') for td in meter_row.find_all('td')]
@@ -80,7 +73,6 @@ def scrape_gepco_bill(reference_number):
         else:
             meter_no = prev_reading = pres_reading = units_consumed = "N/A"
 
-        # 4. Extract 12-Month Bill History
         history_table = soup.find('table', class_='nested6')
         history_data = []
         if history_table:
@@ -110,20 +102,17 @@ def scrape_gepco_bill(reference_number):
                 "bill_history": history_data
             }
         }
-
     except Exception as e:
         return {"status": "error", "message": str(e)}
-        
     finally:
         try:
             driver.quit()
         except:
             pass
 
-# CRITICAL: Root route addition to return 200 OK for Render's Load Balancer
 @app.route('/', methods=['GET', 'HEAD'])
 def health_check():
-    return jsonify({"status": "healthy", "service": "gepco-scraper"}), 200
+    return jsonify({"status": "healthy", "service": "gepco-scraper-docker"}), 200
 
 @app.route('/get-bill/<string:ref_num>', methods=['GET'])
 def get_bill(ref_num):

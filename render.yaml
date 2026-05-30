@@ -1,15 +1,6 @@
 services:
   - type: web
     name: gepco-bill-api
-    env: python
-    buildCommand: |
-      pip install -r requirements.txt
-      # Shell command to install Google Chrome on Render's native Ubuntu environment
-      echo "=== Installing Chrome ==="
-      mkdir -p /home/render/.chrome
-      cd /home/render/.chrome
-      wget https://storage.googleapis.com/chrome-for-testing-public/122.0.6261.94/linux64/chrome-linux64.zip
-      unzip chrome-linux64.zip
-      # Add Chrome path to environment so Selenium detects it natively
-      export PATH=$PATH:/home/render/.chrome/chrome-linux64
-    startCommand: gunicorn app:app
+    env: docker
+    region: oregon
+    plan: free
