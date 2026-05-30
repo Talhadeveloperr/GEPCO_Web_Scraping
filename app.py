@@ -13,12 +13,10 @@ def log_step(message: str):
 def scrape_gepco_bill_direct(reference_number):
     log_step(f"Initiating direct HTTP post request sequence for: {reference_number}")
     
-    # We target the actual structural target endpoint directly
     url = "https://bill.pitc.com.pk/gepcobill/general"
     
-    # Mirror realistic customer connection headers
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
         "Content-Type": "application/x-www-form-urlencoded",
@@ -26,15 +24,27 @@ def scrape_gepco_bill_direct(reference_number):
         "Referer": "https://bill.pitc.com.pk/gepcobill"
     }
     
-    # Pack the exact form key-value pairs the site's search button sends
     payload = {
         "txtRefNo": reference_number,
         "btnSearch": "Search"
     }
 
+    # ================================================================
+    # PROXY CONFIGURATION
+    # Replace with your proxy details. 
+    # For testing, you can use a free proxy, but a cheap residential one (e.g., from Webshare) is recommended.
+    # ================================================================
+    proxies = {
+        "http": "http://username:password@open.proxy-server.com:port",
+        "https://": "http://username:password@open.proxy-server.com:port" # Notice the https syntax for requests
+    }
+
     try:
-        log_step("Sending payload over native connection socket...")
-        response = requests.post(url, data=payload, headers=headers, timeout=20)
+        log_step("Sending payload over native connection socket via Proxy...")
+        
+        # Added the proxies=proxies parameter here
+        response = requests.post(url, data=payload, headers=headers, proxies=proxies, timeout=20)
+        
         log_step(f"Server responded with status code: {response.status_code}")
         
         if response.status_code != 200:
