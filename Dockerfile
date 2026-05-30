@@ -35,4 +35,5 @@ COPY . .
 EXPOSE 10000
 
 # Run using gunicorn bound to Render's required port
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--workers", "1", "--threads", "4", "--timeout", "120", "app:app"]
+# Force 1 lightweight process worker with a single thread and long lifecycle timeouts
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--workers", "1", "--threads", "1", "--timeout", "180", "app:app"]

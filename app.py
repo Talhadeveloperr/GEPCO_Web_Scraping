@@ -1,4 +1,3 @@
-#app.py
 import time
 from flask import Flask, jsonify
 from flask_cors import CORS
@@ -17,20 +16,40 @@ def scrape_gepco_bill(reference_number):
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1920,1080')
+    options.add_argument('--window-size=1200,800')
     options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    
+    # CRITICAL LOW-MEMORY OPTIMIZATIONS FOR 512MB RAM
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-software-rasterizer')
+    options.add_argument('--disable-dev-tools')
+    options.add_argument('--dns-prefetch-disable')
+    options.add_argument('--no-zygote')
+    options.add_argument('--single-process') # Limits Chrome to a single OS process thread
+    options.add_argument('--js-flags="--max-old-space-size=128"') # Limits JS engine to 128MB RAM
+    
+    # Block image assets completely from downloading to save bandwidth and memory
+    prefs = {
+        "profile.managed_default_content_settings.images": 2,
+        "profile.default_content_setting_values.notifications": 2
+    }
+    options.add_experimental_option("prefs", prefs)
 
+    driver = None
     try:
-        # Docker automatically maps the chrome binary system path
         driver = webdriver.Chrome(options=options)
     except Exception as init_err:
         return {"status": "error", "message": f"WebDriver failed to initialize: {str(init_err)}"}
     
     try:
+        # Set short strict timeouts for standard page connections
+        driver.set_page_load_timeout(25)
+        driver.set_script_timeout(25)
+        
         url = "https://bill.pitc.com.pk/gepcobill"
         driver.get(url)
         
-        wait = WebDriverWait(driver, 20)
+        wait = WebDriverWait(driver, 15)
         search_box = wait.until(EC.visibility_of_element_located((By.ID, "searchTextBox")))
         
         search_box.clear()
@@ -39,13 +58,14 @@ def scrape_gepco_bill(reference_number):
         search_button = wait.until(EC.element_to_be_clickable((By.ID, "btnSearch")))
         search_button.click()
         
-        time.sleep(4) 
+        # Reduced sleep time from 4s to 2s to free memory faster
+        time.sleep(2) 
         if len(driver.window_handles) > 1:
             driver.switch_to.window(driver.window_handles[-1])
         
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         
-        # Data Parsing Structure
+        # 1. Extract Consumer & Billing Information
         consumer_id = soup.find(text=lambda t: t and "CONSUMER ID" in t).find_next('tr').find_all('td')[0].text.strip() if soup.find(text=lambda t: t and "CONSUMER ID" in t) else "N/A"
         tariff = soup.find(text=lambda t: t and "TARIFF" in t).find_next('tr').find_all('td')[1].text.strip() if soup.find(text=lambda t: t and "TARIFF" in t) else "N/A"
         
@@ -56,6 +76,7 @@ def scrape_gepco_bill(reference_number):
             if len(ref_rows) > 1:
                 reference_no = ref_rows[1].find('td').text.strip()
 
+        # 2. Extract Name & Address
         name_address_block = soup.find('p', style=lambda s: s and 'text-align: left' in s)
         address_lines = []
         if name_address_block:
@@ -64,6 +85,7 @@ def scrape_gepco_bill(reference_number):
         consumer_name = address_lines[1] if len(address_lines) > 1 else "N/A"
         consumer_address = ", ".join(address_lines[2:]) if len(address_lines) > 2 else "N/A"
 
+        # 3. Extract Meter Readings
         meter_row = soup.find(text=lambda t: t and "METER NO" in t).find_all_next('tr', class_='content')[0] if soup.find(text=lambda t: t and "METER NO" in t) else None
         if meter_row:
             meter_tds = [td.text.strip().replace('\n', ' ') for td in meter_row.find_all('td')]
@@ -74,6 +96,7 @@ def scrape_gepco_bill(reference_number):
         else:
             meter_no = prev_reading = pres_reading = units_consumed = "N/A"
 
+        # 4. Extract 12-Month Bill History
         history_table = soup.find('table', class_='nested6')
         history_data = []
         if history_table:
@@ -106,14 +129,16 @@ def scrape_gepco_bill(reference_number):
     except Exception as e:
         return {"status": "error", "message": str(e)}
     finally:
-        try:
-            driver.quit()
-        except:
-            pass
+        if driver:
+            try:
+                driver.close() # Close tab first
+                driver.quit()  # Terminate background executable processes
+            except:
+                pass
 
 @app.route('/', methods=['GET', 'HEAD'])
 def health_check():
-    return jsonify({"status": "healthy", "service": "gepco-scraper-docker"}), 200
+    return jsonify({"status": "healthy", "service": "gepco-scraper"}), 200
 
 @app.route('/get-bill/<string:ref_num>', methods=['GET'])
 def get_bill(ref_num):
